@@ -13,3 +13,8 @@ TestResults/
 [Bb]uild/
 [Ll]ogs/
 *.csproj.user
+WebGLBuild/
+Temp/
+Logs/
+UserSettings/
+MemoryCaptures/

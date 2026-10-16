@@ -26,6 +26,7 @@ namespace Territory.Client.Unity
 
         public string url = "ws://localhost:4173";
         public bool autoReconnect = true;
+        public bool usePageUrl = true; // WebGL: derive ws(s)://host:port from the serving page
 
         private readonly Queue<string> _incoming = new Queue<string>();
         private readonly Queue<string> _outgoing = new Queue<string>();
@@ -54,6 +55,15 @@ namespace Territory.Client.Unity
         public void Open()
         {
 #if UNITY_WEBGL && !UNITY_EDITOR
+            if (usePageUrl && !string.IsNullOrEmpty(Application.absoluteURL))
+            {
+                try
+                {
+                    var uri = new System.Uri(Application.absoluteURL);
+                    url = (uri.Scheme == "https" ? "wss" : "ws") + "://" + uri.Authority;
+                }
+                catch { }
+            }
             TerritoryWsConnect(url);
 #else
             _cts = new CancellationTokenSource();
