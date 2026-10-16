@@ -30,6 +30,9 @@ namespace Territory.Client.Unity
 
         private readonly Queue<string> _incoming = new Queue<string>();
         private readonly Queue<string> _outgoing = new Queue<string>();
+        // Main-thread callback queue: socket events fire on background
+        // threads, but handlers touch PlayerPrefs and Unity objects.
+        private readonly Queue<Action> _callbacks = new Queue<Action>();
         private ClientWebSocket _socket;
         private CancellationTokenSource _cts;
         private bool _wantOpen;
@@ -88,7 +91,27 @@ namespace Territory.Client.Unity
             DrainJslib();
 #endif
             FlushOutgoing();
+            DrainCallbacks();
             DrainIncoming();
+        }
+
+        private void Post(Action fn)
+        {
+            lock (_callbacks) _callbacks.Enqueue(fn);
+        }
+
+        private void DrainCallbacks()
+        {
+            while (true)
+            {
+                Action fn;
+                lock (_callbacks)
+                {
+                    if (_callbacks.Count == 0) return;
+                    fn = _callbacks.Dequeue();
+                }
+                try { fn(); } catch (Exception e) { Debug.LogException(e); }
+            }
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -149,12 +172,15 @@ namespace Territory.Client.Unity
                         await _socket.ConnectAsync(new Uri(url), cts.Token);
                     }
                     IsOpen = true;
-                    try { Opened?.Invoke(); } catch (Exception e) { Debug.LogException(e); }
+                    Post(() => { IsOpen = true; try { Opened?.Invoke(); } catch (Exception e) { Debug.LogException(e); } });
                     await ReceiveLoop(_cts.Token);
                 }
                 catch { }
-                IsOpen = false;
-                try { Closed?.Invoke(); } catch (Exception e) { Debug.LogException(e); }
+                Post(() =>
+                {
+                    IsOpen = false;
+                    try { Closed?.Invoke(); } catch (Exception e) { Debug.LogException(e); }
+                });
                 if (!_wantOpen || !autoReconnect) break;
                 try { await Task.Delay(1000, _cts.Token); } catch { break; }
                 _socket = new ClientWebSocket();

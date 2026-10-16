@@ -30,5 +30,29 @@ namespace Territory.Editor
             Debug.Log($"WebGL build result: {report.summary.result}");
             if (report.summary.result != BuildResult.Succeeded) EditorApplication.Exit(1);
         }
+
+        // Fast dev-preview target: Linux standalone with the Mono backend
+        // (no IL2CPP/emscripten), built in minutes and run natively.
+        // Output dir comes from UNITY_LINUX_OUT (default LinuxPreview/).
+        public static void BuildLinux()
+        {
+            string outDir = Environment.GetEnvironmentVariable("UNITY_LINUX_OUT");
+            if (string.IsNullOrEmpty(outDir)) outDir = "LinuxPreview";
+            EditorUserBuildSettings.SwitchActiveBuildTarget(
+                BuildTargetGroup.Standalone, BuildTarget.StandaloneLinux64);
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.Mono2x);
+            PlayerSettings.companyName = "Territory";
+            PlayerSettings.productName = "Territory";
+            var options = new BuildPlayerOptions
+            {
+                scenes = new[] { "Assets/Scenes/Main.unity" },
+                locationPathName = System.IO.Path.Combine(outDir, "Territory.x86_64"),
+                target = BuildTarget.StandaloneLinux64,
+                options = BuildOptions.Development,
+            };
+            BuildReport linuxReport = BuildPipeline.BuildPlayer(options);
+            Debug.Log($"Linux build result: {linuxReport.summary.result}");
+            if (linuxReport.summary.result != BuildResult.Succeeded) EditorApplication.Exit(1);
+        }
     }
 }

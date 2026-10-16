@@ -111,6 +111,7 @@ namespace Territory.Client.Unity
                 Destroy(row);
             }
             row = Instantiate(feedRowPrefab, feedList);
+            row.SetActive(true);
             row.GetComponent<Text>().text = text;
             _feedRows.Add(row);
             Destroy(row, 5f);
@@ -147,6 +148,7 @@ namespace Territory.Client.Unity
             foreach (var p in players)
             {
                 var row = Instantiate(playerRowPrefab, parent);
+                row.SetActive(true);
                 var texts = row.GetComponentsInChildren<Text>();
                 string tags = p.Id == client.myId ? " (you)" : "";
                 if (p.Id == client.hostId && !scored) tags += " (host)";
