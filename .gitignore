@@ -1,0 +1,15 @@
+bin/
+obj/
+out/
+.vs/
+.idea/
+*.user
+TestResults/
+[Dd]ebug/
+[Rr]elease/
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Ll]ogs/
+*.csproj.user
