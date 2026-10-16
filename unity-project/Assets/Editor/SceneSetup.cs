@@ -23,6 +23,184 @@ namespace Territory.Editor
         private static Font _font;
         private static Transform _templates;
 
+        // Web palette (public/style.css): bg #070910, card rgba(8,12,22,.92),
+        // ink #e7fff8, muted #8ea0b8, line rgba(0,245,212,.45), glow #39ffd2.
+        private static readonly Color Ink = new Color(0.905f, 1f, 0.972f);
+        private static readonly Color Muted = new Color(0.557f, 0.627f, 0.722f);
+        private static readonly Color CardFill = new Color(0.031f, 0.047f, 0.086f, 0.94f);
+        private static readonly Color Line = new Color(0f, 0.961f, 0.831f, 0.45f);
+        private static readonly Color Glow = new Color(0.224f, 1f, 0.824f);
+        private static readonly Color BtnFill = new Color(0.03f, 0.16f, 0.11f, 0.98f);
+        private static readonly Color InputFill = new Color(0.05f, 0.07f, 0.11f, 0.98f);
+        private static readonly Color Pink = new Color(1f, 0.18f, 0.43f);
+
+        private static readonly System.Collections.Generic.Dictionary<string, Sprite> _sprites =
+            new System.Collections.Generic.Dictionary<string, Sprite>();
+
+        // Rounded 9-slice panel sprite generated at setup time (uGUI has no
+        // CSS border-radius). Border insets so corners scale cleanly.
+        private static Sprite RoundedSprite(Color fill, Color edge, int edgePx, int radius)
+        {
+            string key = $"{fill}_{edge}_{edgePx}_{radius}";
+            if (_sprites.TryGetValue(key, out var cached)) return cached;
+            const int S = 128;
+            var tex = new Texture2D(S, S, TextureFormat.ARGB32, false);
+            tex.filterMode = FilterMode.Bilinear;
+            var pixels = new Color[S * S];
+            float half = S / 2f;
+            for (int y = 0; y < S; y++)
+            {
+                for (int x = 0; x < S; x++)
+                {
+                    Vector2 q = new Vector2(Mathf.Abs(x - half + 0.5f), Mathf.Abs(y - half + 0.5f))
+                        - new Vector2(half - radius, half - radius);
+                    float sd = new Vector2(Mathf.Max(q.x, 0), Mathf.Max(q.y, 0)).magnitude
+                        + Mathf.Min(Mathf.Max(q.x, q.y), 0) - radius;
+                    Color c = new Color(0, 0, 0, 0);
+                    if (sd < 0) c = sd < -edgePx ? fill : edge;
+                    pixels[y * S + x] = c;
+                }
+            }
+            tex.SetPixels(pixels);
+            tex.Apply();
+            var spr = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f),
+                100, 0, SpriteMeshType.FullRect,
+                new Vector4(radius, radius, radius, radius));
+            _sprites[key] = spr;
+            return spr;
+        }
+
+        private static Sprite CardSprite() => RoundedSprite(CardFill, Line, 2, 26);
+        private static Sprite ButtonSprite() => RoundedSprite(BtnFill, BtnFill, 0, 22);
+        private static Sprite PillSprite() => RoundedSprite(new Color(0.02f, 0.05f, 0.07f, 0.9f), Line, 2, 20);
+        private static Sprite InputSprite() => RoundedSprite(InputFill, new Color(0.35f, 0.45f, 0.55f, 0.6f), 2, 18);
+
+        // Tiny how-to diagrams (web draws these on canvas): pink square is the
+        // player, white/mint lines are trails. 0 = leave land, 1 = loop back,
+        // 2 = cross to cut.
+        private static Texture2D DiagramTexture(int kind)
+        {
+            const int W = 132, H = 64;
+            var tex = new Texture2D(W, H, TextureFormat.ARGB32, false);
+            tex.filterMode = FilterMode.Bilinear;
+            var pixels = new Color[W * H]; // transparent bg
+            System.Action<int, int, Color> dot = (x, y, c) =>
+            {
+                if (x >= 0 && y >= 0 && x < W && y < H) pixels[y * W + x] = c;
+            };
+            System.Action<int, int, int, Color> disc = (cx, cy, r, c) =>
+            {
+                for (int y = cy - r; y <= cy + r; y++)
+                    for (int x = cx - r; x <= cx + r; x++)
+                    {
+                        int dx = x - cx, dy = y - cy;
+                        if (dx * dx + dy * dy <= r * r) dot(x, y, c);
+                    }
+            };
+            System.Action<Vector2, Vector2, int, Color> seg = (a, b, w, c) =>
+            {
+                float len = Vector2.Distance(a, b);
+                int n = Mathf.Max(1, Mathf.RoundToInt(len));
+                for (int i = 0; i <= n; i++)
+                {
+                    Vector2 p = Vector2.Lerp(a, b, i / (float)n);
+                    disc(Mathf.RoundToInt(p.x), Mathf.RoundToInt(p.y), w, c);
+                }
+            };
+            Color trail = new Color(1, 1, 1, 0.95f);
+            if (kind == 0)
+            {
+                for (int y = 24; y < 42; y++)
+                    for (int x = 14; x < 32; x++) dot(x, y, Pink);
+                seg(new Vector2(32, 33), new Vector2(112, 33), 2, trail);
+                disc(112, 33, 4, trail);
+            }
+            else if (kind == 1)
+            {
+                for (int y = 22; y < 40; y++)
+                    for (int x = 12; x < 30; x++) dot(x, y, Pink);
+                seg(new Vector2(30, 31), new Vector2(96, 31), 2, trail);
+                seg(new Vector2(96, 31), new Vector2(96, 48), 2, trail);
+                seg(new Vector2(96, 48), new Vector2(40, 48), 2, trail);
+                seg(new Vector2(40, 48), new Vector2(40, 40), 2, trail);
+            }
+            else
+            {
+                seg(new Vector2(14, 44), new Vector2(118, 44), 2, Glow);
+                seg(new Vector2(66, 8), new Vector2(66, 58), 2, trail);
+                for (int y = 2; y < 16; y++)
+                    for (int x = 59; x < 73; x++) dot(x, y, Pink);
+            }
+            tex.SetPixels(pixels);
+            tex.Apply();
+            return tex;
+        }
+
+        // Shared card header: mint title, rules paragraph, how-to trio.
+        // Returns the rules text so callers can bind it to hud.blurbText.
+        private static Text MkCardHeader(Transform parent)
+        {
+            var title = MkText(parent, "CardTitle", "Territory", 38);
+            title.color = Glow;
+            title.alignment = TextAnchor.MiddleLeft;
+            var rules = MkText(parent, "CardRules",
+                "Close a loop to take the ground inside it. Cross a line and that player is out. " +
+                "Most ground when the clock stops wins.", 14);
+            rules.color = Ink;
+            rules.alignment = TextAnchor.UpperLeft;
+            var rle = rules.gameObject.AddComponent<LayoutElement>();
+            rle.minHeight = 62;
+            rle.preferredHeight = 62;
+            var row = new GameObject("HowTo");
+            row.transform.SetParent(parent, false);
+            var hlg = row.AddComponent<HorizontalLayoutGroup>();
+            hlg.spacing = 10;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = false;
+            hlg.childForceExpandWidth = true;
+            hlg.childForceExpandHeight = false;
+            var rowLe = row.AddComponent<LayoutElement>();
+            rowLe.minHeight = 108;
+            rowLe.preferredHeight = 108;
+            string[] caps = { "Leave your land", "Loop back to claim", "Cross a line to cut" };
+            for (int i = 0; i < 3; i++) MkHowTo(row.transform, caps[i], i);
+            return rules;
+        }
+
+        private static void MkHowTo(Transform parent, string caption, int kind)
+        {
+            var go = new GameObject("How" + kind);
+            go.transform.SetParent(parent, false);
+            var img = go.AddComponent<Image>();
+            img.sprite = InputSprite();
+            img.type = Image.Type.Sliced;
+            var le = go.AddComponent<LayoutElement>();
+            le.flexibleWidth = 1;
+            le.minHeight = 104;
+            le.preferredHeight = 104;
+            var pic = new GameObject("Diagram");
+            pic.transform.SetParent(go.transform, false);
+            var raw = pic.AddComponent<RawImage>();
+            raw.texture = DiagramTexture(kind);
+            var prt = pic.GetComponent<RectTransform>();
+            prt.anchorMin = new Vector2(0.5f, 1); prt.anchorMax = new Vector2(0.5f, 1);
+            prt.pivot = new Vector2(0.5f, 1);
+            prt.anchoredPosition = new Vector2(0, -6);
+            prt.sizeDelta = new Vector2(120, 58);
+            var cap = new GameObject("Caption");
+            cap.transform.SetParent(go.transform, false);
+            var txt = cap.AddComponent<Text>();
+            txt.font = _font; txt.fontSize = 12; txt.color = Muted;
+            txt.alignment = TextAnchor.MiddleCenter;
+            txt.horizontalOverflow = HorizontalWrapMode.Wrap;
+            txt.verticalOverflow = VerticalWrapMode.Overflow;
+            txt.text = caption;
+            var crt = cap.GetComponent<RectTransform>();
+            crt.anchorMin = new Vector2(0, 0); crt.anchorMax = new Vector2(1, 0);
+            crt.pivot = new Vector2(0.5f, 0);
+            crt.offsetMin = new Vector2(6, 4); crt.offsetMax = new Vector2(-6, 26);
+        }
+
         // Reference resolution for the CanvasScaler.
         private const float RefW = 1280f;
         private const float RefH = 720f;
@@ -67,11 +245,16 @@ namespace Territory.Editor
             canvas.gameObject.AddComponent<GraphicRaycaster>();
 
             // --- HUD top bar ---
+            // --- HUD top bar: clock pill + status --- 
+            MkCardBack(canvas.transform, "ClockBack",
+                new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -32),
+                new Vector2(170, 58));
             hud.clockText = MkText(canvas.transform, "Clock",
-                new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -30),
-                new Vector2(220, 48), "3:00", 30);
+                new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -32),
+                new Vector2(170, 52), "3:00", 30);
+            hud.clockText.color = Glow;
             hud.statusText = MkText(canvas.transform, "Status",
-                new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -82),
+                new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -84),
                 new Vector2(760, 30), "", 15);
 
             // --- leaderboard (top-left) ---
@@ -82,12 +265,18 @@ namespace Territory.Editor
             templates.SetActive(false);
             _templates = templates.transform;
             hud.boardList = MkList(canvas.transform, "Board",
+                new Vector2(0, 1), new Vector2(0, 1), new Vector2(24, -24),
+                new Vector2(234, 364), 6);
+            MkCardBack(canvas.transform, "BoardBack",
                 new Vector2(0, 1), new Vector2(0, 1), new Vector2(16, -16),
-                new Vector2(250, 380), 6);
+                new Vector2(250, 380));
             hud.boardRowPrefab = MkPlayerRowTemplate(templates.transform, "BoardRow");
 
             // --- minimap (top-right) + kill feed under it ---
             var mini = MkRawImage(canvas.transform, "Minimap",
+                new Vector2(1, 1), new Vector2(1, 1), new Vector2(-24, -24),
+                new Vector2(194, 142));
+            MkCardBack(canvas.transform, "MiniBack",
                 new Vector2(1, 1), new Vector2(1, 1), new Vector2(-16, -16),
                 new Vector2(210, 158));
             hud.minimap = mini;
@@ -100,54 +289,38 @@ namespace Territory.Editor
             // --- bottom corners ---
             hud.restartButton = MkButton(canvas.transform, "Restart",
                 new Vector2(0, 0), new Vector2(0, 0), new Vector2(16, 16),
-                new Vector2(140, 44), "Restart");
+                new Vector2(120, 38), "Restart", true);
             (hud.muteButton, hud.muteLabel) = MkSizedLabeledButton(canvas.transform, "Mute",
-                new Vector2(1, 0), new Vector2(1, 0), new Vector2(-16, 72),
-                new Vector2(150, 44), "Sound on");
+                new Vector2(1, 0), new Vector2(1, 0), new Vector2(-16, 60),
+                new Vector2(116, 36), "Sound on");
             (hud.musicButton, hud.musicLabel) = MkSizedLabeledButton(canvas.transform, "Music",
                 new Vector2(1, 0), new Vector2(1, 0), new Vector2(-16, 16),
-                new Vector2(150, 44), "Music on");
+                new Vector2(116, 36), "Music on");
             hud.touchLeft = MkButton(canvas.transform, "TouchLeft",
-                new Vector2(0, 0), new Vector2(0, 0), new Vector2(170, 16),
-                new Vector2(64, 44), "<");
+                new Vector2(0, 0), new Vector2(0, 0), new Vector2(150, 16),
+                new Vector2(64, 44), "<", true);
             hud.touchRight = MkButton(canvas.transform, "TouchRight",
                 new Vector2(1, 0), new Vector2(1, 0), new Vector2(-182, 16),
-                new Vector2(64, 44), ">");
+                new Vector2(64, 44), ">", true);
             hud.touchLeft.gameObject.SetActive(false);
             hud.touchRight.gameObject.SetActive(false);
 
-            // --- overlay cards ---
+            // --- overlay cards (web #card style: one morphing card) ---
             hud.overlay = MkFullscreenDim(canvas.transform, "Overlay");
-            hud.joinPanel = MkPanel(hud.overlay.transform, "Join", new Vector2(480, 560));
-            float jy = 232;
-            MkText(hud.joinPanel.transform, "Title",
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, jy),
-                new Vector2(440, 60), "Territory", 46);
-            jy -= 62;
-            hud.blurbText = MkText(hud.joinPanel.transform, "Blurb",
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, jy),
-                new Vector2(420, 48), "Close a loop to take the ground inside it.", 15);
-            hud.blurbText.horizontalOverflow = HorizontalWrapMode.Wrap;
-            hud.blurbText.verticalOverflow = VerticalWrapMode.Overflow;
-            jy -= 72;
-            MkText(hud.joinPanel.transform, "NameLabel",
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, jy),
-                new Vector2(360, 24), "Your name", 14);
-            jy -= 36;
-            hud.nameInput = MkInput(hud.joinPanel.transform, "NameInput",
-                new Vector2(0.5f, 0.5f), new Vector2(0, jy), new Vector2(360, 44));
-            jy -= 72;
-            hud.joinButton = MkButton(hud.joinPanel.transform, "JoinButton",
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, jy),
-                new Vector2(200, 52), "Join");
-            jy -= 70;
-            var hint = MkText(hud.joinPanel.transform, "Hint",
-                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, jy),
-                new Vector2(420, 44), "WASD / arrows or drag to steer - don't hit trails.", 13);
-            hint.horizontalOverflow = HorizontalWrapMode.Wrap;
-            hint.verticalOverflow = VerticalWrapMode.Overflow;
+            hud.joinPanel = MkPanel(hud.overlay.transform, "Join", new Vector2(560, 640));
+            var joinContent = MkPanelContent(hud.joinPanel);
+            MkCardHeader(joinContent);
+            var joinName = MkText(joinContent, "NameLabel", "Name", 14);
+            joinName.color = Muted;
+            joinName.alignment = TextAnchor.MiddleLeft;
+            hud.nameInput = MkInput(joinContent, "NameInput", new Vector2(0, 46));
+            hud.joinButton = MkRowButton(joinContent, "JoinButton", "Join");
+            var joinHint = MkText(joinContent, "Hint",
+                "No VPN? Online rooms are coming to this client soon.", 13);
+            joinHint.color = Muted;
+            joinHint.alignment = TextAnchor.MiddleCenter;
 
-            hud.roomPanel = MkPanel(hud.overlay.transform, "Room", new Vector2(580, 680));
+            hud.roomPanel = MkPanel(hud.overlay.transform, "Room", new Vector2(620, 660));
             hud.roomPanel.SetActive(false);
             BuildRoomPanel(hud);
 
@@ -175,26 +348,18 @@ namespace Territory.Editor
             Debug.Log("Scene generated: Assets/Scenes/Main.unity");
         }
 
-        // Room panel uses a vertical layout group so rows never overlap.
+        // Room card mirrors the web room view: same header, then roster and
+        // host controls in a scrollable column.
         private static void BuildRoomPanel(HudController hud)
         {
-            var content = new GameObject("Content");
-            content.transform.SetParent(hud.roomPanel.transform, false);
-            var vlg = content.AddComponent<VerticalLayoutGroup>();
-            vlg.padding = new RectOffset(20, 20, 18, 18);
-            vlg.spacing = 8;
-            vlg.childControlWidth = true;
-            vlg.childControlHeight = false;
-            vlg.childForceExpandWidth = true;
-            vlg.childForceExpandHeight = false;
-            vlg.childAlignment = TextAnchor.UpperCenter;
-            var crt = content.GetComponent<RectTransform>();
-            crt.anchorMin = Vector2.zero; crt.anchorMax = Vector2.one;
-            crt.offsetMin = Vector2.zero; crt.offsetMax = Vector2.zero;
-
+            var content = MkScrollContent(hud.roomPanel);
+            hud.blurbText = MkCardHeader(content);
             MkText(content.transform, "NickLabel", "Your name", 14);
             hud.nickInput = MkInput(content.transform, "NickInput", new Vector2(0, 40));
             hud.steerToggle = MkToggle(content.transform, "SteerToggle", "Steer with the cursor");
+            hud.rosterList = MkList(content.transform, "Roster", new Vector2(120, 4));
+            hud.playerRowPrefab = MkPlayerRowTemplate(_templates, "PlayerRow");
+            hud.shareText = MkText(content.transform, "Share", "", 12);
             hud.minutesDropdown = MkDropdown(content.transform, "Minutes",
                 new[] { "1 minute", "2 minutes", "3 minutes", "5 minutes" }, 2);
             hud.botLevelDropdown = MkDropdown(content.transform, "BotLevel",
@@ -205,15 +370,81 @@ namespace Territory.Editor
             hud.startLabel = hud.startButton.GetComponentInChildren<Text>();
             hud.waitingText = MkText(content.transform, "Waiting", "", 13);
             hud.errorText = MkText(content.transform, "Error", "", 13);
-            MkText(content.transform, "RosterLabel", "Players", 14);
-            hud.rosterList = MkList(content.transform, "Roster", new Vector2(120, 4));
-            hud.playerRowPrefab = MkPlayerRowTemplate(_templates, "PlayerRow");
-            MkText(content.transform, "ResultsLabel", "Results", 14);
             hud.resultsList = MkList(content.transform, "Results", new Vector2(90, 4));
-            hud.shareText = MkText(content.transform, "Share", "", 12);
         }
 
-        // Place a rect by anchor + pivot + inset offset with an explicit size.
+        // Full-stretch vertical content inside a fixed card.
+        private static Transform MkPanelContent(GameObject panel)
+        {
+            var content = new GameObject("Content");
+            content.transform.SetParent(panel.transform, false);
+            var vlg = content.AddComponent<VerticalLayoutGroup>();
+            vlg.padding = new RectOffset(28, 28, 24, 24);
+            vlg.spacing = 10;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = false;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
+            vlg.childAlignment = TextAnchor.UpperCenter;
+            var crt = content.GetComponent<RectTransform>();
+            crt.anchorMin = Vector2.zero; crt.anchorMax = Vector2.one;
+            crt.offsetMin = Vector2.zero; crt.offsetMax = Vector2.zero;
+            return content.transform;
+        }
+
+        // Scrollable vertical content inside a fixed card (room view).
+        private static Transform MkScrollContent(GameObject panel)
+        {
+            var scrollGO = new GameObject("Scroll");
+            scrollGO.transform.SetParent(panel.transform, false);
+            var srt = scrollGO.AddComponent<RectTransform>();
+            srt.anchorMin = Vector2.zero; srt.anchorMax = Vector2.one;
+            srt.offsetMin = Vector2.zero; srt.offsetMax = Vector2.zero;
+            var scroll = scrollGO.AddComponent<ScrollRect>();
+            scroll.horizontal = false;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 28;
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(scrollGO.transform, false);
+            var vrt = viewport.GetComponent<RectTransform>();
+            vrt.anchorMin = Vector2.zero; vrt.anchorMax = Vector2.one;
+            vrt.offsetMin = Vector2.zero; vrt.offsetMax = Vector2.zero;
+            viewport.AddComponent<Image>().color = new Color(0, 0, 0, 0);
+            viewport.AddComponent<Mask>().showMaskGraphic = false;
+            scroll.viewport = vrt;
+            var content = new GameObject("Content", typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            var crt = content.GetComponent<RectTransform>();
+            crt.anchorMin = new Vector2(0, 1); crt.anchorMax = new Vector2(1, 1);
+            crt.pivot = new Vector2(0.5f, 1);
+            crt.offsetMin = Vector2.zero; crt.offsetMax = Vector2.zero;
+            var vlg = content.AddComponent<VerticalLayoutGroup>();
+            vlg.padding = new RectOffset(28, 28, 24, 24);
+            vlg.spacing = 8;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = false;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
+            vlg.childAlignment = TextAnchor.UpperCenter;
+            var fitter = content.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            scroll.content = crt;
+            return content.transform;
+        }
+
+        // Rounded card backing behind a HUD element (web #board/#clock style).
+        private static void MkCardBack(Transform parent, string name,
+            Vector2 anchor, Vector2 pivot, Vector2 offset, Vector2 size)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.SetAsFirstSibling();
+            var img = go.AddComponent<Image>();
+            img.sprite = CardSprite();
+            img.type = Image.Type.Sliced;
+            Place(go.GetComponent<RectTransform>(), anchor, anchor, pivot, offset, size);
+        }
         private static void Place(RectTransform rt, Vector2 anchorMin, Vector2 anchorMax,
             Vector2 pivot, Vector2 offset, Vector2 size)
         {
@@ -234,7 +465,7 @@ namespace Territory.Editor
             t.font = _font;
             t.text = text;
             t.fontSize = fontSize;
-            t.color = Color.white;
+            t.color = Ink;
             t.alignment = TextAnchor.MiddleCenter;
             t.horizontalOverflow = HorizontalWrapMode.Wrap;
             t.verticalOverflow = VerticalWrapMode.Overflow;
@@ -307,7 +538,7 @@ namespace Territory.Editor
             var nameT = new GameObject("Name");
             nameT.transform.SetParent(go.transform, false);
             var nt = nameT.AddComponent<Text>();
-            nt.font = _font; nt.fontSize = 14; nt.color = Color.white;
+            nt.font = _font; nt.fontSize = 14; nt.color = Ink;
             nt.alignment = TextAnchor.MiddleLeft;
             var nle = nameT.AddComponent<LayoutElement>();
             nle.flexibleWidth = 1;
@@ -315,7 +546,7 @@ namespace Territory.Editor
             var stat = new GameObject("Stat");
             stat.transform.SetParent(go.transform, false);
             var st = stat.AddComponent<Text>();
-            st.font = _font; st.fontSize = 14; st.color = Color.white;
+            st.font = _font; st.fontSize = 14; st.color = Muted;
             st.alignment = TextAnchor.MiddleRight;
             var sle2 = stat.AddComponent<LayoutElement>();
             sle2.minWidth = 90; sle2.preferredWidth = 90; sle2.flexibleWidth = 0;
@@ -329,7 +560,7 @@ namespace Territory.Editor
             var go = new GameObject("FeedRow");
             go.transform.SetParent(parent, false);
             var t = go.AddComponent<Text>();
-            t.font = _font; t.fontSize = 13; t.color = Color.white;
+            t.font = _font; t.fontSize = 13; t.color = Ink;
             t.alignment = TextAnchor.MiddleRight;
             t.horizontalOverflow = HorizontalWrapMode.Wrap;
             t.verticalOverflow = VerticalWrapMode.Overflow;
@@ -340,18 +571,21 @@ namespace Territory.Editor
         }
 
         private static Button MkButton(Transform parent, string name,
-            Vector2 anchorMin, Vector2 pivot, Vector2 offset, Vector2 size, string label)
+            Vector2 anchorMin, Vector2 pivot, Vector2 offset, Vector2 size, string label,
+            bool pill = false)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             var img = go.AddComponent<Image>();
-            img.color = new Color(0.1f, 0.2f, 0.2f, 0.9f);
+            img.sprite = pill ? PillSprite() : ButtonSprite();
+            img.type = Image.Type.Sliced;
             var btn = go.AddComponent<Button>();
             var t = new GameObject("Label");
             t.transform.SetParent(go.transform, false);
             var txt = t.AddComponent<Text>();
-            txt.font = _font; txt.fontSize = 16; txt.color = Color.white;
+            txt.font = _font; txt.fontSize = pill ? 14 : 16; txt.color = Glow;
             txt.alignment = TextAnchor.MiddleCenter;
+            txt.text = label;
             var rt = t.GetComponent<RectTransform>();
             rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
             rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
@@ -362,7 +596,7 @@ namespace Territory.Editor
         private static (Button, Text) MkSizedLabeledButton(Transform parent, string name,
             Vector2 anchorMin, Vector2 pivot, Vector2 offset, Vector2 size, string label)
         {
-            var btn = MkButton(parent, name, anchorMin, pivot, offset, size, label);
+            var btn = MkButton(parent, name, anchorMin, pivot, offset, size, label, true);
             return (btn, btn.GetComponentInChildren<Text>());
         }
 
@@ -382,7 +616,8 @@ namespace Territory.Editor
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             var img = go.AddComponent<Image>();
-            img.color = new Color(0.03f, 0.05f, 0.08f, 0.94f);
+            img.sprite = CardSprite();
+            img.type = Image.Type.Sliced;
             Place(go.GetComponent<RectTransform>(),
                 new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
                 new Vector2(0.5f, 0.5f), Vector2.zero, size);
@@ -407,12 +642,13 @@ namespace Territory.Editor
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             var img = go.AddComponent<Image>();
-            img.color = new Color(0.08f, 0.1f, 0.14f);
+            img.sprite = InputSprite();
+            img.type = Image.Type.Sliced;
             var input = go.AddComponent<InputField>();
             var t = new GameObject("Text");
             t.transform.SetParent(go.transform, false);
             var txt = t.AddComponent<Text>();
-            txt.font = _font; txt.fontSize = 16; txt.color = Color.white;
+            txt.font = _font; txt.fontSize = 16; txt.color = Ink;
             txt.alignment = TextAnchor.MiddleLeft;
             var trt = t.GetComponent<RectTransform>();
             trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
@@ -450,7 +686,7 @@ namespace Territory.Editor
             var box = new GameObject("Background");
             box.transform.SetParent(go.transform, false);
             var img = box.AddComponent<Image>();
-            img.color = new Color(0.2f, 0.25f, 0.3f);
+            img.color = InputFill;
             var boxRt = box.GetComponent<RectTransform>();
             boxRt.sizeDelta = new Vector2(20, 20);
             var check = new GameObject("Checkmark");
@@ -460,7 +696,7 @@ namespace Territory.Editor
             var lab = new GameObject("Label");
             lab.transform.SetParent(go.transform, false);
             var txt = lab.AddComponent<Text>();
-            txt.font = _font; txt.fontSize = 14; txt.color = Color.white; txt.text = label;
+            txt.font = _font; txt.fontSize = 14; txt.color = Ink; txt.text = label;
             txt.alignment = TextAnchor.MiddleLeft;
             var toggle = go.AddComponent<Toggle>();
             toggle.targetGraphic = img;
@@ -473,7 +709,8 @@ namespace Territory.Editor
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             var img = go.AddComponent<Image>();
-            img.color = new Color(0.08f, 0.1f, 0.14f);
+            img.sprite = InputSprite();
+            img.type = Image.Type.Sliced;
             var dd = go.AddComponent<Dropdown>();
             var le = go.AddComponent<LayoutElement>();
             le.minHeight = 36;
@@ -482,7 +719,7 @@ namespace Territory.Editor
             var cap = new GameObject("Label");
             cap.transform.SetParent(go.transform, false);
             var txt = cap.AddComponent<Text>();
-            txt.font = _font; txt.fontSize = 14; txt.color = Color.white;
+            txt.font = _font; txt.fontSize = 14; txt.color = Ink;
             txt.alignment = TextAnchor.MiddleLeft;
             var trt = cap.GetComponent<RectTransform>();
             trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;

@@ -140,7 +140,7 @@ namespace Territory.Client.Unity
 
         private static string RulesBlurb() =>
             "Close a loop to take the ground inside it. Cross a line and that player is out. " +
-            "Most ground when the clock stops wins.";
+            "Most ground when the clock stops wins. Move with WASD or the arrow keys.";
 
         private void RenderList(Transform parent, List<CardPlayer> players, bool scored)
         {
