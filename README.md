@@ -57,13 +57,15 @@ compile (UnityEngine/UGUI/Newtonsoft assemblies).
 uploads the `territory-webgl` artifact. Before the first green build, do the
 one-time license setup:
 
-1. Actions tab → "Request activation file" → Run workflow.
-2. Download the `activation-file` artifact (a `.alf` file).
-3. Upload it at <https://license.unity3d.com/manual> while signed in.
-4. Download the resulting license file and store its **contents** as the
+1. The activation file is already generated locally:
+   `unity-territory/Unity_v6000.alf` (regenerate anytime with
+   `Unity -batchmode -createManualActivationFile Unity_v6000.alf -quit`).
+2. Upload it at <https://license.unity3d.com/manual> while signed in.
+   (This is the one step that needs your Unity ID login.)
+3. Download the resulting license file and store its **contents** as the
    `UNITY_LICENSE` repo secret, plus `UNITY_EMAIL` and `UNITY_PASSWORD`
    (your Unity ID). Settings → Secrets → Actions.
-5. Re-run the build workflow.
+4. Re-run the build workflow.
 
 The workflow copies `src/` into `unity-project/Assets` before building, so
 `src/` stays the single source of truth.
