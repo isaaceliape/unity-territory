@@ -1,8 +1,12 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Territory.Client/Territory.Client.csproj" />
+    <Project Path="src/Territory.Server/Territory.Server.csproj" />
     <Project Path="src/Territory.Sim/Territory.Sim.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Territory.Client.Tests/Territory.Client.Tests.csproj" />
+    <Project Path="tests/Territory.Server.Tests/Territory.Server.Tests.csproj" />
     <Project Path="tests/Territory.Sim.Tests/Territory.Sim.Tests.csproj" />
   </Folder>
 </Solution>

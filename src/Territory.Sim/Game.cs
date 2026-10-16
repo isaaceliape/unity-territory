@@ -178,6 +178,11 @@ namespace Territory.Sim
         private readonly Dictionary<int, Player> _players = new Dictionary<int, Player>();
         private readonly List<Player> _order = new List<Player>();
 
+        // Per-tick write sets, mirroring landWrites/trailWrites in game.js.
+        // The server turns these into landRuns deltas and full snapshots.
+        private readonly Dictionary<int, byte> _landWrites = new Dictionary<int, byte>();
+        private readonly Dictionary<int, byte> _trailWrites = new Dictionary<int, byte>();
+
         private string _phase = "lobby";
         private int? _hostId;
         private double _durationMs = 180000;
@@ -189,6 +194,11 @@ namespace Territory.Sim
         public string Phase => _phase;
         public int? HostId => _hostId;
         public double DurationMs => _durationMs;
+        public long TickCount => _tickCount;
+
+        public double MsLeftAt(double nowMs) =>
+            _phase == "countdown" ? _countdownRemaining
+            : _phase == "play" ? Math.Max(0, _endsAt - nowMs) : 0;
 
         public Game(GameOptions options = null)
         {
@@ -210,13 +220,42 @@ namespace Territory.Sim
             if (prev != 0 && _players.TryGetValue(prev, out var oldOwner)) oldOwner.LandCount -= 1;
             if (id != 0 && _players.TryGetValue(id, out var newOwner)) newOwner.LandCount += 1;
             Land[i] = (byte)id;
+            _landWrites[i] = (byte)id;
         }
 
         private void SetTrail(int i, int id)
         {
             if (Trail[i] == id) return;
             Trail[i] = (byte)id;
+            _trailWrites[i] = (byte)id;
         }
+
+        public void ClearPatch()
+        {
+            _landWrites.Clear();
+            _trailWrites.Clear();
+        }
+
+        public List<int[]> LandRuns()
+        {
+            var keys = _landWrites.Keys.ToList();
+            keys.Sort();
+            var runs = new List<int[]>();
+            foreach (int i in keys)
+            {
+                int value = _landWrites[i];
+                if (runs.Count > 0)
+                {
+                    var last = runs[runs.Count - 1];
+                    if (last[2] == value && last[0] + last[1] == i) { last[1] += 1; continue; }
+                }
+                runs.Add(new[] { i, 1, value });
+            }
+            return runs;
+        }
+
+        public List<int[]> TrailWrites() =>
+            _trailWrites.OrderBy(kv => kv.Key).Select(kv => new[] { kv.Key, (int)kv.Value }).ToList();
 
         private static string CleanName(string raw)
         {
@@ -687,6 +726,7 @@ namespace Territory.Sim
                 _countdownRemaining = _countdownMs;
                 _endsAt = 0;
             }
+            ClearPatch();
             return new StartResult { Ok = true };
         }
 
@@ -964,6 +1004,7 @@ namespace Territory.Sim
         public TickResult Tick(double nowMs)
         {
             _nowMs = nowMs;
+            ClearPatch();
             if (_phase == "lobby" || _phase == "over")
                 return new TickResult { Phase = _phase };
 

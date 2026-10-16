@@ -26,7 +26,30 @@ src/Territory.Client/     Phase 3: Unity WebGL scripts (rendering, input, HUD)
 `Game` mirrors `createGame`: grid `Land`/`Trail` arrays, 110ms tick, phases
 lobby/countdown/play/over, 12 seats, Easy/Normal/Hard bots with the same
 `BOT_LEVELS` numbers, seeded `Random` (`GameOptions.Random`, mulberry32 in
-tests so bot paths match the JS game tick for tick).
+tests so bot paths match the JS game tick for tick). Per-tick write sets
+(`LandRuns`/`TrailWrites`) and `MsLeftAt` feed the wire protocol.
+
+## Phase 2 status: done
+
+`Territory.Server` is the headless host: dependency-free WebSocket +
+static-file server on one port (`WsServer.cs`), session logic ported from
+`server/index.js` (`GameHost.cs`: seating, tokens, 10s reconnect grace,
+host-only actions, session wins, results log, tick loop with snapshot/delta
+broadcasts), and `Program.cs` with the same one-command story
+(`PORT=4173`, prints LAN addresses). The JSON shapes match the Node server,
+verified live: the original Node client joined the C# server, added a hard
+bot, started a round, and received valid snapshots + deltas.
+
+## Phase 3 status: client core done, Unity shell source-only
+
+`Territory.Client` ports the engine-free client logic with tests: `ViewHelpers`
+(feed text, wall warnings, danger cells, wins labels, clock), `BoardModel`
+(snapshots, deltas, interpolated poses, scoreboard order), `SfxSynth` (every
+effect recipe + the 32-step theme rendered to PCM), `FxModel` (particles,
+rings, flashes, floaters, confetti, shake). `src/Territory.Client.Unity/`
+holds the Unity scripts (socket, board/HUD/input/audio/effects, WebGL
+`.jslib`) plus an editor setup README — they need the Unity editor to
+compile (UnityEngine/UGUI/Newtonsoft assemblies).
 
 ## Build and test
 
