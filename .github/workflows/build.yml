@@ -1,0 +1,64 @@
+# Builds the WebGL client on Unity's cloud via GameCI on every push to main.
+#
+# Single source of truth: ../src (Sim, Client core, Unity scripts). The sync
+# step copies them into unity-project/Assets before building, so the checked-in
+# copies under unity-project are just what the local editor last used.
+name: Build WebGL
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'unity-project/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+env:
+  UNITY_VERSION: 6000.0.64f1
+  UNITY_WEBGL_OUT: build/WebGL
+
+jobs:
+  build:
+    name: Build WebGL
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync sources into Unity project
+        run: |
+          cp src/Territory.Sim/Game.cs unity-project/Assets/Scripts/Sim/
+          cp src/Territory.Client/ViewHelpers.cs src/Territory.Client/BoardModel.cs \
+             src/Territory.Client/SfxSynth.cs src/Territory.Client/FxModel.cs \
+             unity-project/Assets/Scripts/ClientCore/
+          cp src/Territory.Client.Unity/Assets/Scripts/Net/*.cs unity-project/Assets/Scripts/Net/
+          cp src/Territory.Client.Unity/Assets/Scripts/Client/*.cs unity-project/Assets/Scripts/Client/
+          cp src/Territory.Client.Unity/Assets/Plugins/WebGL/TerritoryWs.jslib \
+             unity-project/Assets/Plugins/WebGL/
+
+      - name: Cache Library
+        uses: actions/cache@v4
+        with:
+          path: unity-project/Library
+          key: Library-WebGL-${{ hashFiles('unity-project/Assets/**', 'unity-project/Packages/**', 'unity-project/ProjectSettings/**') }}
+          restore-keys: |
+            Library-WebGL-
+
+      - name: Build
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: ${{ env.UNITY_VERSION }}
+          targetPlatform: WebGL
+          projectPath: unity-project
+          buildMethod: Territory.Editor.BuildScript.BuildWebGL
+
+      - name: Upload WebGL build
+        uses: actions/upload-artifact@v4
+        with:
+          name: territory-webgl
+          path: unity-project/build/WebGL

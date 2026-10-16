@@ -1,0 +1,28 @@
+# One-time setup: generates a Unity activation file (.alf).
+# Download it from the run, upload it at https://license.unity3d.com/manual,
+# then store the returned license as the UNITY_LICENSE repo secret
+# (plus UNITY_EMAIL / UNITY_PASSWORD for your Unity ID).
+name: Request activation file
+
+on:
+  workflow_dispatch:
+
+jobs:
+  activation:
+    name: Request .alf
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Request manual activation file
+        id: getManualLicenseFile
+        uses: game-ci/unity-request-activation-file@v2
+        with:
+          unityVersion: 6000.0.64f1
+
+      - name: Upload .alf
+        uses: actions/upload-artifact@v4
+        with:
+          name: activation-file
+          path: ${{ steps.getManualLicenseFile.outputs.filePath }}

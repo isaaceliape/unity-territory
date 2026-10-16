@@ -51,7 +51,24 @@ holds the Unity scripts (socket, board/HUD/input/audio/effects, WebGL
 `.jslib`) plus an editor setup README — they need the Unity editor to
 compile (UnityEngine/UGUI/Newtonsoft assemblies).
 
-## Build and test
+## Cloud builds (GameCI)
+
+`.github/workflows/build.yml` builds WebGL on every push to main and
+uploads the `territory-webgl` artifact. Before the first green build, do the
+one-time license setup:
+
+1. Actions tab → "Request activation file" → Run workflow.
+2. Download the `activation-file` artifact (a `.alf` file).
+3. Upload it at <https://license.unity3d.com/manual> while signed in.
+4. Download the resulting license file and store its **contents** as the
+   `UNITY_LICENSE` repo secret, plus `UNITY_EMAIL` and `UNITY_PASSWORD`
+   (your Unity ID). Settings → Secrets → Actions.
+5. Re-run the build workflow.
+
+The workflow copies `src/` into `unity-project/Assets` before building, so
+`src/` stays the single source of truth.
+
+## Build and test (.NET side)
 
 Needs .NET SDK 10 (`dotnet --version`). With the SDK on PATH:
 
